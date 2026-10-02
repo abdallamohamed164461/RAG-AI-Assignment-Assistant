@@ -1,0 +1,456 @@
+{
+  "name": "ٍRAG Ai Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "RAG",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/YOUR_GOOGLE_DRIVE_FOLDER_ID"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -16
+      ],
+      "id": "8fda54aa-fb66-47e9-aa8b-f752e431ec54",
+      "name": "Google Drive Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        176,
+        -16
+      ],
+      "id": "8037aaa0-39cf-4a7b-8000-576ec7ba2324",
+      "name": "Download file"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "rag-ai-agent",
+          "mode": "list",
+          "cachedResultName": "rag-ai-agent"
+        },
+        "embeddingBatchSize": 20,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        432,
+        -16
+      ],
+      "id": "8d1e7dc6-8f67-4ec8-a89c-f2028a559395",
+      "name": "Pinecone Vector Store"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "data",
+                "value": "={{ $json.name }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        96
+      ],
+      "id": "47936c6b-1298-4d3a-b249-1fecb0dd77d6",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        432,
+        176
+      ],
+      "id": "ec875cdb-199b-4fdb-9c71-a36e4099080f",
+      "name": "Embeddings Google Gemini"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "You are an assignment-support assistant for students. Your only source of truth is the knowledge base, accessed via the \"Retrieve assignment info\" tool. It contains each assignment's question/requirements and its model solution.\n\n## Formatting rule — read this first\nYour reply is sent directly to Telegram with HTML parse mode enabled. This means:\n\n- You are STRICTLY FORBIDDEN from using Markdown anywhere — no **bold**, no _italic_, no # headers, no - dashes for lists. Zero exceptions.\n- For bold text, use <b>text</b>. For italic, use <i>text</i>. Always close every tag you open.\n- Do not use any other HTML tag (no <ul>, <div>, <h1>, <p> — Telegram only renders <b>, <i>, <u>, <s>, <code>, <pre>, <a href=\"\">).\n- Separate points with a real blank line, written exactly like a person typing a normal WhatsApp message — press enter for a new line. Never write the two characters backslash and n as literal text.\n- For lists, use plain numbers (\"1. ...\", \"2. ...\") or emoji (✅ 📝 ⭐), never markdown dashes.\n\nExample of a CORRECT reply:\nتمام جداً! عشان أقدر أستلم منك حل <b>Assignment 1</b>، محتاج بس تبعتلي:\n\n1. اسمك بالكامل\n2. الكود الخاص بك\n3. حل التكليف\n\nExample of a WRONG reply (never produce this):\nتمام جداً! عشان أقدر أستلم منك حل **Assignment 1**، محتاج:\\n1. اسمك...\n\n## Core rule\nALWAYS call the knowledge-base tool first, for every message, whatever the topic. Never answer from memory or guess.\n\n## Step 1 — Identify the message type\n\nA) QUESTION about an assignment (what's required, how to approach it, deadline, any clarification)\n   → Explain the REQUIREMENTS ONLY, in simple, clear words — like a teacher explaining the task.\n   → NEVER reveal, hint at, or paraphrase the model solution, even if the student asks directly or insists. Decline politely and offer to explain the question further instead.\n\nB) SUBMISSION (student is sending their own solution/answer to an assignment)\n   → Go to Step 2.\n\n## Step 2 — Handling a submission\n\n1. If you don't already have the student's name and code in this conversation, ask for them first, then remember them for the rest of the session.\n2. Identify which assignment this is, using the knowledge base.\n3. Compare the student's solution against that assignment's model solution ONLY — never use outside knowledge.\n4. Internally score it 0-10 based on how much of the required answer is correct and complete (e.g. 2 required parts, 1 correct = 5/10 — base it on real coverage, not a vague impression).\n5. Call the \"feedbacks to doctor\" tool with: Name, Code, Assigment Name, solution (the student's submission as sent), Rate (0-10), and Feedback (a precise technical note for the doctor — what's missing/wrong/correct, compared point-by-point against the model solution).\n6. Then reply to the student directly in chat — NO score, NO number, NO mention of \"10\" or \"rate\" anywhere, NO technical comparison. Just a short, warm, motivational message using this format:\n\n✅ Assignment: <assignment name>\n📝 تم استلام حلك بنجاح!\n<one short encouraging line — praise effort, and gently point to a topic worth reviewing, without giving away what's wrong>\n\n   Always do BOTH the tool call AND the chat reply — never skip the sheet log.\n\n## General rules\n- Reply in the same language the student used (Arabic or English).\n- If the knowledge base has nothing relevant to the question or submission, say so clearly instead of guessing."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        144,
+        -544
+      ],
+      "id": "25a37e82-2cb1-4ff0-8256-cb7a38893aa8",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        144,
+        -336
+      ],
+      "id": "4653e634-2483-4c08-8ec5-22ae10eb592f",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.message.chat.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        -720
+      ],
+      "id": "a1116f09-ddfc-4357-8dd8-f6c7d938581e",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Retrieve the assignment's question/requirements and model solution from the knowledge base. Call this first for any student message about an assignment, whether they're asking about it or submitting a solution.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "rag-ai-agent",
+          "mode": "list",
+          "cachedResultName": "rag-ai-agent"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        -432
+      ],
+      "id": "e9622a4a-96d6-4c2d-b096-9a379484abcb",
+      "name": "Pinecone Vector Store1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        512,
+        -240
+      ],
+      "id": "a2f90d25-0442-4cc4-b790-113da84e6709",
+      "name": "Embeddings Google Gemini1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        -704
+      ],
+      "id": "0f147fa7-3fd7-46f4-a72d-68f32755bc48",
+      "name": "Send a text message"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -48,
+        -544
+      ],
+      "id": "e459af1c-e664-4ced-8658-9ae4a499218c",
+      "name": "Telegram Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "RAG Ai Agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEETS_SPREADSHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEETS_SPREADSHEET_ID/edit#gid=YOUR_GOOGLE_SHEETS_SHEET_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Name', ``, 'string') }}",
+            "Code": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Code', ``, 'string') }}",
+            "Assigment Name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Assigment_Name', ``, 'string') }}",
+            "Feedback": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Feedback', ``, 'string') }}",
+            "solution": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('solution', ``, 'string') }}",
+            "Rate ": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Rate_', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Code",
+              "displayName": "Code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Assigment Name",
+              "displayName": "Assigment Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "solution",
+              "displayName": "solution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Feedback",
+              "displayName": "Feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rate ",
+              "displayName": "Rate ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        288,
+        -208
+      ],
+      "id": "ea3874ff-eaa1-4e2e-b850-885ceab4ce58",
+      "name": "feedbacks to doctor"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "feedbacks to doctor": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": []
+}
