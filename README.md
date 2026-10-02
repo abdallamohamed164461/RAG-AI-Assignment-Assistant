@@ -34,9 +34,7 @@ An n8n-powered Telegram assistant that answers student questions about assignmen
 
 ## How it works
 
-![Workflow Architecture](./assets/workflow-diagram.png)
-
-Add a reviewed screenshot of the n8n canvas as `assets/workflow-diagram.png`.
+![Workflow overview](./assets/workflow-diagram.png)
 
 ```text
 ASSIGNMENT INGESTION
@@ -197,10 +195,10 @@ The score and detailed technical feedback are intended for the instructor's Goog
 ├── README.md
 ├── rag-ai-assignment-assistant.json
 └── assets/
-    └── workflow-diagram.png   # Add a reviewed n8n canvas screenshot
+    └── workflow-diagram.png
 ```
 
-The original unsanitized workflow export and local screenshots are excluded from version control. Add only a reviewed screenshot under `assets/`; do not publish the original export or screenshots containing private instance details.
+The original unsanitized workflow export and local screenshots are excluded from version control. The included workflow diagram is cropped to show the n8n canvas without the browser or account details.
 
 ## License
 
