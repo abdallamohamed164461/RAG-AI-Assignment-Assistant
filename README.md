@@ -1,3 +1,5 @@
+![RAG AI Assignment Assistant workflow](./assets/workflow-diagram.png)
+
 # RAG AI Assignment Assistant
 
 An n8n-powered Telegram assistant that answers student questions about assignments, reviews submitted solutions against instructor-provided references, and logs detailed feedback for instructors.
@@ -33,8 +35,6 @@ An n8n-powered Telegram assistant that answers student questions about assignmen
 - Sends a supportive Telegram reply and logs the submission, rating, and detailed instructor feedback to Google Sheets.
 
 ## How it works
-
-![Workflow overview](./assets/workflow-diagram.png)
 
 ```text
 ASSIGNMENT INGESTION
